@@ -9,8 +9,9 @@ import (
 func main() {
 	port := os.Args[1]
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Worker received a request")
+	http.HandleFunc("GET /worker/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		log.Println("Worker received a request", id)
 		w.Write([]byte("Hello, World!"))
 	})
 

@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use async_trait::async_trait;
 
+use pingora::lb::selection::Consistent;
 use pingora::server::Server;
 use pingora::prelude::*;
 use regex::Regex;
 
-pub struct LB(Arc<LoadBalancer<RoundRobin>>);
+pub struct LB(Arc<LoadBalancer<Consistent>>);
 
 pub struct Context {
    pub worker_id: Option<usize>,
@@ -50,7 +51,8 @@ impl ProxyHttp for LB {
 
     async fn upstream_peer(&self, _session: &mut Session, ctx: &mut Self::CTX) -> Result<Box<HttpPeer>> {
         println!("received request for worker_id: {:?}", ctx.worker_id);
-        let upstream = self.0.select(b"", 256).unwrap();
+        let worker_id = ctx.worker_id.unwrap_or(0);
+        let upstream = self.0.select(&worker_id.to_be_bytes(), 256).unwrap();
 
         let peer = Box::new(HttpPeer::new(upstream, false, "".to_owned()));
         Ok(peer)
