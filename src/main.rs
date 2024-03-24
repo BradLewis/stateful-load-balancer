@@ -3,28 +3,65 @@ use async_trait::async_trait;
 
 use pingora::server::Server;
 use pingora::prelude::*;
+use regex::Regex;
 
 pub struct LB(Arc<LoadBalancer<RoundRobin>>);
 
+pub struct Context {
+   pub worker_id: Option<usize>,
+}
+
+fn get_worker_id(uri: &str) -> Option<usize> {
+    let re = match Regex::new(r"/worker/(\d+)/?.*") {
+        Ok(re) => re,
+        Err(e) => {
+            eprintln!("Error creating regex, {:?}", e);
+            return None;
+        }
+    };
+
+    let caps = match re.captures(uri) {
+        Some(caps) => caps,
+        None => {
+            eprintln!("No captures found");
+            return None;
+        }
+    };
+
+    match caps.get(1)?.as_str().parse::<usize>() {
+        Ok(worker_id) => Some(worker_id),
+        Err(e) => {
+            eprintln!("Error parsing worker_id, {:?}", e);
+            None
+        }
+    }
+    
+}
+
 #[async_trait]
 impl ProxyHttp for LB {
-    type CTX = ();
+    type CTX = Context;
 
     fn new_ctx(&self) -> Self::CTX {
-        ()
+        Context {
+            worker_id: None,
+        }
     }
 
-    async fn upstream_peer(&self, _session: &mut Session, _ctx: &mut Self::CTX) -> Result<Box<HttpPeer>> {
+    async fn upstream_peer(&self, _session: &mut Session, ctx: &mut Self::CTX) -> Result<Box<HttpPeer>> {
+        println!("received request for worker_id: {:?}", ctx.worker_id);
         let upstream = self.0.select(b"", 256).unwrap();
 
-        println!("upstream: {:?}", upstream);
         let peer = Box::new(HttpPeer::new(upstream, false, "".to_owned()));
         Ok(peer)
     }
 
-    async fn upstream_request_filter(&self, _session: &mut Session, upstream_request: &mut RequestHeader, _ctx: &mut Self::CTX) -> Result<()> {
-        upstream_request.insert_header("Host", "one.one.one.one").unwrap();
-        Ok(())
+    async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
+        let uri = &session.req_header().uri.path();
+        if uri.starts_with("/worker") {
+            ctx.worker_id = get_worker_id(uri);
+        }
+        Ok(false)
     }
 }
 
