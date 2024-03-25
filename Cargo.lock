@@ -1814,6 +1814,7 @@ dependencies = [
  "async-trait",
  "pingora",
  "regex",
+ "serde_json",
 ]
 
 [[package]]
